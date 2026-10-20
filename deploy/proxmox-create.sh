@@ -29,6 +29,8 @@ fi
 say() { printf '%s\n' "$*"; }
 die() { printf 'Refusing: %s\n' "$*" >&2; exit 1; }
 
+say "Steward installer revision 3"
+
 [ "$(id -u)" -eq 0 ] || die "run this as root on the Proxmox host."
 command -v pct >/dev/null 2>&1 || die "pct is not installed. This is not a Proxmox node."
 command -v pvesm >/dev/null 2>&1 || die "pvesm is not installed. This is not a Proxmox node."
@@ -132,7 +134,12 @@ fi
 download_needed=0
 if [ -z "$TEMPLATE" ]; then
   TEMPLATE=$(pveam available --section system | pick_debian || true)
-  [ -n "$TEMPLATE" ] || die "no Debian 12 or 13 standard template is published for this node."
+  if [ -z "$TEMPLATE" ]; then
+    say "The appliance list did not contain a Debian 12 or 13 archive. This is what the node returned:" >&2
+    pveam list "$TEMPLATE_STORAGE" 2>&1 | head -n 30 >&2 || true
+    pveam available --section system 2>&1 | head -n 40 >&2 || true
+    die "no Debian 12 or 13 standard template is published for this node. Nothing was created."
+  fi
   download_needed=1
 fi
 case "$TEMPLATE" in
