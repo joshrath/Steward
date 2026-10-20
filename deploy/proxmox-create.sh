@@ -120,19 +120,25 @@ if [ "$IP" != "dhcp" ]; then
   NET="${NET},gw=${GW}"
 fi
 
+pick_debian() {
+  grep -oE 'debian-1[23]-standard_[^[:space:]]+\.tar\.(zst|gz|xz)' | sort -u | tail -1
+}
+
 pveam update >/dev/null 2>&1 || say "Template list could not be refreshed. Using what is already downloaded, if any."
 TEMPLATE=""
 if pveam list "$TEMPLATE_STORAGE" >/dev/null 2>&1; then
-  TEMPLATE=$(pveam list "$TEMPLATE_STORAGE" | awk '/debian-12-standard_/ { print $1 }' | awk -F/ '{ print $NF }' | sort | tail -1)
+  TEMPLATE=$(pveam list "$TEMPLATE_STORAGE" | pick_debian || true)
 fi
+download_needed=0
 if [ -z "$TEMPLATE" ]; then
-  TEMPLATE=$(pveam available --section system | awk '/debian-12-standard_/ { print $NF }' | sort | tail -1)
-  [ -n "$TEMPLATE" ] || TEMPLATE=$(pveam available --section system | awk '/debian-13-standard_/ { print $NF }' | sort | tail -1)
+  TEMPLATE=$(pveam available --section system | pick_debian || true)
   [ -n "$TEMPLATE" ] || die "no Debian 12 or 13 standard template is published for this node."
-  if [ "$DRY_RUN" -eq 0 ]; then
-    pveam download "$TEMPLATE_STORAGE" "$TEMPLATE"
-  fi
+  download_needed=1
 fi
+case "$TEMPLATE" in
+  debian-1[23]-standard_*.tar.zst|debian-1[23]-standard_*.tar.gz|debian-1[23]-standard_*.tar.xz) ;;
+  *) die "the template name '${TEMPLATE}' is not a Debian appliance. Nothing was created." ;;
+esac
 
 say "Preflight passed. Nothing else on this node will be changed."
 say "  new container id ${CTID}, hostname steward"
@@ -144,6 +150,10 @@ say "  host memory still free before create: ${avail_mb} MB"
 if [ "$DRY_RUN" -eq 1 ]; then
   say "Dry run only. No container was created."
   exit 0
+fi
+
+if [ "$download_needed" -eq 1 ]; then
+  pveam download "$TEMPLATE_STORAGE" "$TEMPLATE"
 fi
 
 pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
