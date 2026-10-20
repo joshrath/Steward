@@ -8,17 +8,20 @@ The console keeps its notes in the browser. API tokens you type are used for tha
 
 ## Create the container
 
-On the Proxmox host, as root. Pick a free CT id. `120` is only an example. DHCP is fine. Use a static address if you want a bookmark that does not move. Pick an address that is free on `192.168.1.0/24`.
+On the Proxmox host, as root. Pick a free CT id. `130` is only an example. Run the dry run first. It changes nothing.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/joshrath/Steward/main/deploy/proxmox-create.sh -o /root/steward-create.sh
-bash /root/steward-create.sh
+bash /root/steward-create.sh --dry-run
+CTID=130 bash /root/steward-create.sh
 ```
+
+The real run refuses if that id is already a guest, if the bridge is missing, if the storage cannot hold containers, or if the node would have less than 1.5 GB free afterward. It does not reboot the host and it does not stop or edit any other guest. Swap inside the new container is zero.
 
 Static address:
 
 ```bash
-CTID=120 IP=192.168.1.45/24 GW=192.168.1.1 bash /root/steward-create.sh
+CTID=130 IP=192.168.1.45/24 GW=192.168.1.1 bash /root/steward-create.sh
 ```
 
 Other knobs, if the defaults do not match the host: `BRIDGE` (`vmbr0`), `STORAGE` (`local-lvm`), `TEMPLATE_STORAGE` (`local`), `MEMORY` (`3072`), `DISK` (`12`), `CORES` (`2`).
