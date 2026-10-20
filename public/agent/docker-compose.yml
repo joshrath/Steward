@@ -1,0 +1,15 @@
+# Prefer an unprivileged LXC on Proxmox (vmbr0), not this compose file.
+# If you insist on Docker, run it on the host network and never on Gluetun.
+# Watchtower must be off. It will fight this agent.
+services:
+  steward:
+    image: python:3.12-slim
+    container_name: steward
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - /etc/steward.env
+    volumes:
+      - ./policy.json:/opt/steward/policy.json:ro
+      - ./steward-agent.py:/opt/steward/steward-agent.py:ro
+    command: ["python", "/opt/steward/steward-agent.py", "--policy", "/opt/steward/policy.json", "--loop"]

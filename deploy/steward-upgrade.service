@@ -1,0 +1,8 @@
+[Unit]
+Description=Upgrade Steward from GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/steward/deploy/upgrade.sh

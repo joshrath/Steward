@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Steward upgrade
+
+[Timer]
+OnCalendar=*-*-* 04:20:00
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

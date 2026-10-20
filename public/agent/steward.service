@@ -1,0 +1,16 @@
+[Unit]
+Description=Steward lab agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/steward.env
+WorkingDirectory=/opt/steward
+ExecStart=/usr/bin/python3 /opt/steward/steward-agent.py --policy /opt/steward/policy.json --loop
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
