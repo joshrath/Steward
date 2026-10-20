@@ -21,7 +21,18 @@ if ! id steward >/dev/null 2>&1; then
 fi
 
 if [ ! -d /opt/steward/.git ]; then
-  rm -rf /opt/steward
+  if [ -L /opt/steward ]; then
+    echo "Refusing to remove /opt/steward because it is a link." >&2
+    exit 1
+  fi
+  if [ -e /opt/steward ]; then
+    target=$(readlink -f /opt/steward)
+    if [ "$target" != "/opt/steward" ]; then
+      echo "Refusing to remove ${target}." >&2
+      exit 1
+    fi
+    rm -rf -- /opt/steward
+  fi
   git clone https://github.com/joshrath/Steward.git /opt/steward
 fi
 chown -R steward:steward /opt/steward
