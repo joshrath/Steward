@@ -10,7 +10,7 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl git
+apt-get install -y ca-certificates curl git sudo
 if ! command -v node >/dev/null 2>&1 || ! node -v | grep -q '^v22\.'; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
@@ -45,4 +45,6 @@ install -m 0644 /opt/steward/deploy/steward-upgrade.timer /etc/systemd/system/st
 systemctl daemon-reload
 systemctl enable --now steward
 systemctl enable --now steward-upgrade.timer
+install -d -m 0700 -o root -g root /var/lib/steward-upgrade
+sudo -u steward git -C /opt/steward rev-parse HEAD > /var/lib/steward-upgrade/built-rev
 echo "Steward is listening on port 8080. It checks GitHub every morning and upgrades itself."
