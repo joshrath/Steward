@@ -7,6 +7,7 @@
 #
 #   bash proxmox-create.sh --dry-run
 #   CTID=130 bash proxmox-create.sh
+#   STEWARD_REF=<tag-or-commit> bash proxmox-create.sh   # pin the in-container installer (default: main)
 #   CTID=130 IP=192.168.1.45/24 GW=192.168.1.1 bash proxmox-create.sh
 set -euo pipefail
 
@@ -14,6 +15,7 @@ CTID="${CTID:-130}"
 BRIDGE="${BRIDGE:-vmbr0}"
 STORAGE="${STORAGE:-local-lvm}"
 TEMPLATE_STORAGE="${TEMPLATE_STORAGE:-local}"
+STEWARD_REF="${STEWARD_REF:-main}"
 IP="${IP:-dhcp}"
 GW="${GW:-}"
 CORES="${CORES:-2}"
@@ -22,14 +24,16 @@ DISK="${DISK:-12}"
 DRY_RUN=0
 ROOT="${STEWARD_TEST_ROOT:-}"
 
-if [ "${1:-}" = "--dry-run" ]; then
-  DRY_RUN=1
-fi
+case "$#:${1:-}" in
+  0:) ;;
+  1:--dry-run) DRY_RUN=1 ;;
+  *) printf 'Refusing: unknown arguments: %s. The only option is --dry-run.\n' "$*" >&2; exit 2 ;;
+esac
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'Refusing: %s\n' "$*" >&2; exit 1; }
 
-say "Steward installer revision 3"
+say "Steward installer revision 4"
 
 [ "$(id -u)" -eq 0 ] || die "run this as root on the Proxmox host."
 command -v pct >/dev/null 2>&1 || die "pct is not installed. This is not a Proxmox node."
@@ -40,6 +44,7 @@ command -v pveam >/dev/null 2>&1 || die "pveam is not installed. This is not a P
 [ "$CTID" -ge 100 ] || die "CTID must be 100 or higher so it cannot collide with a system id."
 [[ "$DISK" =~ ^[0-9]+$ ]] || die "DISK must be a whole number of gigabytes."
 [ "$DISK" -ge 8 ] && [ "$DISK" -le 32 ] || die "DISK must be between 8 and 32 GB."
+[[ "$STEWARD_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || die "STEWARD_REF must be a branch, tag, or commit id."
 [[ "$CORES" =~ ^[0-9]+$ ]] || die "CORES must be a number."
 [ "$CORES" -ge 1 ] && [ "$CORES" -le 4 ] || die "CORES must be from 1 to 4."
 
@@ -109,7 +114,7 @@ printf '%s\n' "$storage_block" | grep -q 'rootdir' || die "storage ${STORAGE} ca
 
 status_line=$(pvesm status --storage "$STORAGE" | awk -v name="$STORAGE" '$1==name { print }')
 [ -n "$status_line" ] || die "storage ${STORAGE} did not answer pvesm."
-printf '%s\n' "$status_line" | grep -q 'active' || die "storage ${STORAGE} is not active."
+[ "$(printf '%s\n' "$status_line" | awk '{ print $3 }')" = "active" ] || die "storage ${STORAGE} is not active."
 free_kb=$(printf '%s\n' "$status_line" | awk '{ print $(NF-1) }')
 [[ "$free_kb" =~ ^[0-9]+$ ]] || die "could not read free space on ${STORAGE}."
 need_kb=$(((DISK + 2) * 1024 * 1024))
@@ -123,7 +128,7 @@ if [ "$IP" != "dhcp" ]; then
 fi
 
 pick_debian() {
-  grep -oE 'debian-1[23]-standard_[^[:space:]]+\.tar\.(zst|gz|xz)' | sort -u | tail -1
+  grep -oE 'debian-1[23]-standard_[^[:space:]]+\.tar\.(zst|gz|xz)' | sort -uV | tail -1
 }
 
 pveam update >/dev/null 2>&1 || say "Template list could not be refreshed. Using what is already downloaded, if any."
@@ -171,6 +176,7 @@ pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
   --rootfs "${STORAGE}:${DISK}" \
   --net0 "$NET" \
   --unprivileged 1 \
+  --features nesting=1 \
   --onboot 1 \
   --start 0
 
@@ -183,7 +189,7 @@ for _ in $(seq 1 30); do
   fi
   sleep 2
 done
-[ "$ready" -eq 1 ] || die "container $CTID started but did not accept a command. It was left stopped from any further install. Inspect it with: pct status $CTID"
+[ "$ready" -eq 1 ] || die "container $CTID started but did not accept a command. It is still running but nothing was installed in it. Inspect it with: pct status $CTID"
 
 has_ip=0
 for _ in $(seq 1 20); do
@@ -195,7 +201,7 @@ for _ in $(seq 1 20); do
 done
 [ "$has_ip" -eq 1 ] || die "container $CTID has no IPv4 address. It was not modified further. Give it DHCP on ${BRIDGE}, or recreate is not required: set the address in the container and run the installer by hand."
 
-pct exec "$CTID" -- bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl'
-pct exec "$CTID" -- bash -c 'curl -fsSL https://raw.githubusercontent.com/joshrath/Steward/main/deploy/lxc-install.sh | bash'
+pct exec "$CTID" -- bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl sudo git'
+pct exec "$CTID" -- bash -c "curl -fsSL 'https://raw.githubusercontent.com/joshrath/Steward/${STEWARD_REF}/deploy/lxc-install.sh' | bash"
 say "Container $CTID is up. Open http://<the-address-below>:8080"
 pct exec "$CTID" -- hostname -I || true
