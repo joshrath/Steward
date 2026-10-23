@@ -18,6 +18,9 @@ sudo -u steward git -C "$APP" fetch origin main
 local_rev=$(sudo -u steward git -C "$APP" rev-parse HEAD)
 remote_rev=$(sudo -u steward git -C "$APP" rev-parse origin/main)
 
+STATE=/var/lib/steward-upgrade
+built_rev=$(cat "$STATE/built-rev" 2>/dev/null || true)
+
 if [ "$local_rev" != "$remote_rev" ]; then
   sudo -u steward git -C "$APP" merge --ff-only origin/main
   if [ "${STEWARD_UPGRADE_REEXEC:-}" != "1" ]; then
@@ -26,7 +29,8 @@ if [ "$local_rev" != "$remote_rev" ]; then
   fi
 fi
 
-if [ "${STEWARD_UPGRADE_REEXEC:-}" != "1" ]; then
+# A failed build leaves HEAD ahead of the last good build, so retry it.
+if [ "${STEWARD_UPGRADE_REEXEC:-}" != "1" ] && [ "$built_rev" = "$local_rev" ]; then
   echo "Steward is current ($(sudo -u steward git -C "$APP" rev-parse --short HEAD))."
   exit 0
 fi
@@ -39,4 +43,6 @@ install -m 0644 "$APP/deploy/steward-upgrade.timer" /etc/systemd/system/steward-
 systemctl daemon-reload
 systemctl enable steward-upgrade.timer
 systemctl restart steward
+install -d -m 0700 -o root -g root "$STATE"
+sudo -u steward git -C "$APP" rev-parse HEAD > "$STATE/built-rev"
 echo "Upgraded Steward to $(sudo -u steward git -C "$APP" rev-parse --short HEAD)."
